@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Object Identifier with Voice</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.6.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    video, canvas {
+      position: absolute;
+      top: 0; left: 0;
+    }
+    #label {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <video id="webcam" width="640" height="480" autoplay muted playsinline></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="label">Loading...</div>
+
+  <script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const labelDiv = document.getElementById('label');
+
+    let lastSpoken = '';
+    let speakCooldown = false;
+
+    function speak(text) {
+      if (speakCooldown || text === lastSpoken) return;
+      const msg = new SpeechSynthesisUtterance("I see a " + text);
+      speechSynthesis.speak(msg);
+      lastSpoken = text;
+      speakCooldown = true;
+      setTimeout(() => { speakCooldown = false; }, 2000); // 2 sec cooldown
+    }
+
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => resolve(video);
+      });
+    }
+
+    async function start() {
+      await setupCamera();
+      const model = await cocoSsd.load();
+      labelDiv.textContent = "Model loaded. Detecting...";
+
+      async function detectFrame() {
+        const predictions = await model.detect(video);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (predictions.length > 0) {
+          const top = predictions[0];
+          labelDiv.textContent = `Detected: ${top.class}`;
+          speak(top.class);
+        } else {
+          labelDiv.textContent = "Nothing detected";
+        }
+
+        predictions.forEach(pred => {
+          const [x, y, width, height] = pred.bbox;
+          ctx.beginPath();
+          ctx.rect(x, y, width, height);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'red';
+          ctx.stroke();
+
+          ctx.font = '16px Arial';
+          ctx.fillStyle = 'red';
+          ctx.fillText(pred.class, x + 5, y > 20 ? y - 5 : y + 15);
+        });
+
+        requestAnimationFrame(detectFrame);
+      }
+
+      detectFrame();
+    }
+
+    start();
+  </script>
+</body>
+</html>
